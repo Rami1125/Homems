@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ניהול תקציב ביתי מתקדם</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase (provided by Canvas environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId;
+
+        // Function to display messages (replaces alert)
+        function showMessage(message, type = 'info') {
+            const messageBox = document.getElementById('message-box');
+            messageBox.textContent = message;
+            messageBox.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'} transition-all duration-300 transform translate-x-0 opacity-100`;
+            setTimeout(() => {
+                messageBox.classList.add('translate-x-full', 'opacity-0');
+            }, 3000);
+        }
+
+        // Initialize Firebase and authenticate
+        async function initFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously or with custom token
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Listen for auth state changes to get the user ID
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Firebase initialized. User ID:", userId);
+                        // Load data after authentication
+                        loadCurrentMonthData();
+                        loadHistoricalData();
+                    } else {
+                        // User is signed out, or not yet signed in
+                        userId = null;
+                        console.log("No user signed in.");
+                    }
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                document.getElementById('loading-status').textContent = 'שגיאה בטעינת Firebase. נסה לרענן את הדף.';
+            }
+        }
+
+        // Save current month's data to Firestore
+        async function saveCurrentMonthData() {
+            if (!db || !userId) return; // Ensure Firebase is initialized and user is authenticated
+
+            const incomeDetails = [];
+            document.querySelectorAll('#income-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.income-input');
+                if (nameInput && valueInput) {
+                    incomeDetails.push({
+                        name: nameInput.value || 'הכנסה ללא שם',
+                        amount: parseFloat(valueInput.value) || 0
+                    });
+                }
+            });
+
+            const expenseDetails = [];
+            document.querySelectorAll('#expense-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.expense-input');
+                if (nameInput && valueInput) {
+                    expenseDetails.push({
+                        name: nameInput.value || 'הוצאה ללא שם',
+                        amount: parseFloat(valueInput.value) || 0
+                    });
+                }
+            });
+
+            const currentData = {
+                incomeDetails: incomeDetails,
+                expenseDetails: expenseDetails,
+                lastUpdated: serverTimestamp()
+            };
+
+            try {
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/current_budget`, 'data'), currentData);
+                console.log("Current month data saved to Firestore.");
+            } catch (error) {
+                console.error("Error saving current month data:", error);
+                showMessage('שגיאה בשמירת נתונים נוכחיים.', 'error');
+            }
+        }
+
+        // Load current month's data from Firestore
+        async function loadCurrentMonthData() {
+            if (!db || !userId) return;
+
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/current_budget`, 'data');
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    // Clear existing dynamic fields before loading
+                    document.querySelectorAll('#income-fields .dynamic-field').forEach(field => field.remove());
+                    document.querySelectorAll('#expense-fields .dynamic-field').forEach(field => field.remove());
+
+                    data.incomeDetails.forEach(item => {
+                        addDynamicField('income', item.name, item.amount);
+                    });
+                    data.expenseDetails.forEach(item => {
+                        addDynamicField('expense', item.name, item.amount);
+                    });
+                    updateBalanceAndChart();
+                    console.log("Current month data loaded from Firestore.");
+                } else {
+                    console.log("No current month data found, starting fresh.");
+                    // Ensure default fields are present if no data
+                    if (document.querySelectorAll('.income-input').length === 0) {
+                        addDynamicField('income', 'משכורת', 0);
+                        addDynamicField('income', 'הכנסות אחרות', 0);
+                    }
+                    if (document.querySelectorAll('.expense-input').length === 0) {
+                        addDynamicField('expense', 'גן ילדים', 0);
+                        addDynamicField('expense', 'חשמל', 0);
+                        addDynamicField('expense', 'מים', 0);
+                        addDynamicField('expense', 'מזונות', 0);
+                        addDynamicField('expense', 'כרטיסי אשראי', 0);
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading current month data:", error);
+                showMessage('שגיאה בטעינת נתונים נוכחיים.', 'error');
+            } finally {
+                document.getElementById('loading-status').textContent = ''; // Hide loading message
+            }
+        }
+
+        // Save current month's summary to historical data
+        async function saveMonthlySummary() {
+            if (!db || !userId) return;
+
+            const totalIncome = getIncomeValues();
+            const totalExpenses = getExpenseValues();
+            const balance = totalIncome - totalExpenses;
+
+            const incomeDetails = [];
+            document.querySelectorAll('#income-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.income-input');
+                if (nameInput && valueInput) {
+                    incomeDetails.push({
+                        name: nameInput.value || 'הכנסה ללא שם',
+                        amount: parseFloat(valueInput.value) || 0
+                    });
+                }
+            });
+
+            const expenseDetails = [];
+            document.querySelectorAll('#expense-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.expense-input');
+                if (nameInput && valueInput) {
+                    expenseDetails.push({
+                        name: nameInput.value || 'הוצאה ללא שם',
+                        amount: parseFloat(valueInput.value) || 0
+                    });
+                }
+            });
+
+            const now = new Date();
+            const monthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`; // YYYY-MM format
+
+            const summaryData = {
+                monthYear: monthYear,
+                totalIncome: totalIncome,
+                totalExpenses: totalExpenses,
+                balance: balance,
+                incomeDetails: incomeDetails,
+                expenseDetails: expenseDetails,
+                timestamp: serverTimestamp()
+            };
+
+            try {
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/monthly_summaries`), summaryData);
+                console.log("Monthly summary saved to Firestore.");
+                showMessage('סיכום חודשי נשמר בהצלחה!', 'success');
+            } catch (error) {
+                console.error("Error saving monthly summary:", error);
+                showMessage('שגיאה בשמירת סיכום חודשי.', 'error');
+            }
+        }
+
+        // Load and display historical data from Firestore
+        function loadHistoricalData() {
+            if (!db || !userId) return;
+
+            const historyContainer = document.getElementById('history-container');
+            historyContainer.innerHTML = '<p class="text-gray-500 text-center">טוען היסטוריה...</p>';
+
+            const q = query(collection(db, `artifacts/${appId}/users/${userId}/monthly_summaries`), orderBy('timestamp', 'desc'));
+
+            onSnapshot(q, (snapshot) => {
+                historyContainer.innerHTML = ''; // Clear previous history
+                if (snapshot.empty) {
+                    historyContainer.innerHTML = '<p class="text-gray-500 text-center">אין נתונים היסטוריים זמינים.</p>';
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const date = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleDateString('he-IL') : 'תאריך לא ידוע';
+                    const statusClass = data.balance >= 0 ? 'text-green-600' : 'text-red-600';
+
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-3';
+                    historyItem.innerHTML = `
+                        <p class="text-lg font-semibold text-gray-800">${data.monthYear} - סיכום חודשי</p>
+                        <p class="text-gray-600">תאריך שמירה: ${date}</p>
+                        <p class="text-gray-700">סה"כ הכנסות: <span class="text-green-600 font-medium">${data.totalIncome.toFixed(2)} ₪</span></p>
+                        <p class="text-gray-700">סה"כ הוצאות: <span class="text-red-600 font-medium">${data.totalExpenses.toFixed(2)} ₪</span></p>
+                        <p class="text-xl font-bold ${statusClass}">יתרה סופית: ${data.balance.toFixed(2)} ₪</p>
+                        <div class="mt-2 text-sm text-gray-600">
+                            <p class="font-semibold">פירוט הכנסות:</p>
+                            <ul class="list-disc list-inside">
+                                ${data.incomeDetails.map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
+                            </ul>
+                            <p class="font-semibold mt-2">פירוט הוצאות:</p>
+                            <ul class="list-disc list-inside">
+                                ${data.expenseDetails.map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                    historyContainer.appendChild(historyItem);
+                });
+                console.log("Historical data loaded from Firestore.");
+            }, (error) => {
+                console.error("Error fetching historical data:", error);
+                historyContainer.innerHTML = '<p class="text-red-500 text-center">שגיאה בטעינת נתונים היסטוריים.</p>';
+            });
+        }
+
+        // --- Existing JavaScript Logic (modified for dynamic fields and Firebase) ---
+
+        const incomeFieldsContainer = document.getElementById('income-fields');
+        const expenseFieldsContainer = document.getElementById('expense-fields');
+        // addIncomeFieldButton and addExpenseFieldButton are now initialized inside window.onload
+        let addIncomeFieldButton; 
+        let addExpenseFieldButton;
+
+        const currentBalanceDisplay = document.getElementById('current-balance');
+        const balanceStatusDisplay = document.getElementById('balance-status');
+        const resetButton = document.getElementById('reset-button');
+        const liveClock = document.getElementById('live-clock');
+        const liveDate = document.getElementById('live-date');
+        
+        // budgetChartCanvas and budgetChart are now initialized inside window.onload
+        let budgetChartCanvas;
+        let budgetChart;
+
+        function updateClockAndDate() {
+            const now = new Date();
+            liveClock.textContent = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            liveDate.textContent = now.toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        }
+
+        function getIncomeValues() {
+            let totalIncome = 0;
+            document.querySelectorAll('.income-input').forEach(input => {
+                totalIncome += parseFloat(input.value) || 0;
+            });
+            return totalIncome;
+        }
+
+        function getExpenseValues() {
+            let totalExpenses = 0;
+            document.querySelectorAll('.expense-input').forEach(input => {
+                totalExpenses += parseFloat(input.value) || 0;
+            });
+            return totalExpenses;
+        }
+
+        function updateBalanceAndChart() {
+            const totalIncome = getIncomeValues();
+            const totalExpenses = getExpenseValues();
+            const balance = totalIncome - totalExpenses;
+
+            currentBalanceDisplay.textContent = `${balance.toFixed(2)} ₪`;
+
+            if (balance >= 0) {
+                currentBalanceDisplay.classList.remove('text-red-600');
+                currentBalanceDisplay.classList.add('text-green-600');
+                balanceStatusDisplay.textContent = 'בפלוס! 🎉';
+                balanceStatusDisplay.classList.remove('text-red-600');
+                balanceStatusDisplay.classList.add('text-green-600');
+            } else {
+                currentBalanceDisplay.classList.remove('text-green-600');
+                currentBalanceDisplay.classList.add('text-red-600');
+                balanceStatusDisplay.textContent = 'במינוס 😟';
+                balanceStatusDisplay.classList.remove('text-green-600');
+                balanceStatusDisplay.classList.add('text-red-600');
+            }
+
+            // Update Chart - ensure budgetChartCanvas is initialized
+            if (!budgetChartCanvas) {
+                console.error("Chart canvas not initialized yet.");
+                return;
+            }
+
+            if (budgetChart) {
+                budgetChart.destroy(); // Destroy previous chart instance
+            }
+
+            budgetChart = new Chart(budgetChartCanvas, {
+                type: 'pie',
+                data: {
+                    labels: ['הכנסות', 'הוצאות'],
+                    datasets: [{
+                        data: [totalIncome, totalExpenses],
+                        backgroundColor: ['#34D399', '#EF4444'], // Green for income, Red for expenses
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 16
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS' }).format(context.parsed);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            saveCurrentMonthData(); // Save data to Firestore on every change
+        }
+
+        // Function to add a dynamic field (income/expense)
+        function addDynamicField(type, initialName = '', initialValue = 0) {
+            const container = type === 'income' ? incomeFieldsContainer : expenseFieldsContainer;
+            const inputClass = type === 'income' ? 'income-input focus:ring-green-500 focus:border-green-500' : 'expense-input focus:ring-red-500 focus:border-red-500';
+
+            const newField = document.createElement('div');
+            newField.className = 'flex flex-wrap items-center gap-3 dynamic-field'; // Added dynamic-field class
+            newField.innerHTML = `
+                <input type="text" value="${initialName}" class="field-name-input mt-1 block w-32 px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg text-gray-900" placeholder="שם">
+                <input type="number" value="${initialValue}" class="${inputClass} mt-1 flex-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg text-gray-900" placeholder="סכום">
+                <button type="button" class="remove-field-btn bg-gray-200 text-gray-600 p-2 rounded-full hover:bg-gray-300 transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 01-2 0v6a1 1 0 112 0V8z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+            container.appendChild(newField);
+
+            const nameInput = newField.querySelector('.field-name-input');
+            const valueInput = newField.querySelector('input[type="number"]');
+            const removeButton = newField.querySelector('.remove-field-btn');
+
+            // Update balance on value input change
+            valueInput.addEventListener('input', updateBalanceAndChart);
+
+            // Remove field button
+            removeButton.addEventListener('click', () => {
+                newField.remove();
+                updateBalanceAndChart();
+            });
+
+            // Initial fields for a new app instance
+            if (initialName === 'משכורת' && type === 'income') {
+                nameInput.readOnly = true; // Make default fields non-editable
+            }
+            if (initialName === 'גן ילדים' || initialName === 'חשמל' || initialName === 'מים' || initialName === 'מזונות' || initialName === 'כרטיסי אשראי' && type === 'expense') {
+                nameInput.readOnly = true; // Make default fields non-editable
+            }
+        }
+
+        // Function to reset all data (manual or auto)
+        async function resetData() {
+            // First, save the current month's data as a historical summary
+            await saveMonthlySummary();
+
+            // Then, clear the current month's data in Firestore
+            try {
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/current_budget`, 'data'), {
+                    incomeDetails: [],
+                    expenseDetails: [],
+                    lastUpdated: serverTimestamp()
+                });
+                console.log("Current month data cleared in Firestore.");
+            } catch (error) {
+                console.error("Error clearing current month data in Firestore:", error);
+                showMessage('שגיאה באיפוס נתונים נוכחיים.', 'error');
+            }
+
+            // Clear UI inputs and dynamic fields
+            document.querySelectorAll('.income-input, .expense-input').forEach(input => {
+                input.value = 0;
+            });
+            document.querySelectorAll('.dynamic-field').forEach(field => field.remove());
+
+            // Re-add default fields after reset
+            addDynamicField('income', 'משכורת', 0);
+            addDynamicField('income', 'הכנסות אחרות', 0);
+            addDynamicField('expense', 'גן ילדים', 0);
+            addDynamicField('expense', 'חשמל', 0);
+            addDynamicField('expense', 'מים', 0);
+            addDynamicField('expense', 'מזונות', 0);
+            addDynamicField('expense', 'כרטיסי אשראי', 0);
+
+            updateBalanceAndChart();
+            // Store the month and year of the reset
+            const now = new Date();
+            localStorage.setItem('lastResetMonthYear', `${now.getFullYear()}-${now.getMonth()}`);
+            showMessage('הנתונים אופסו בהצלחה!', 'success');
+        }
+
+        // Function to check and auto-reset on the 10th of the month
+        function checkAndAutoReset() {
+            const now = new Date();
+            const currentDay = now.getDate();
+            const currentMonthYear = `${now.getFullYear()}-${now.getMonth()}`;
+            const lastResetMonthYear = localStorage.getItem('lastResetMonthYear');
+
+            if (currentDay === 10 && currentMonthYear !== lastResetMonthYear) {
+                resetData(); // This will save current data and then reset
+                showMessage('הנתונים אופסו אוטומטית לרגל קבלת משכורת!', 'info');
+            }
+        }
+
+        // Initial calls on page load
+        window.onload = function() {
+            // Ensure loading-status element exists before trying to access it
+            const loadingStatusElement = document.getElementById('loading-status');
+            if (loadingStatusElement) {
+                loadingStatusElement.textContent = 'טוען נתונים...';
+            } else {
+                console.error("Element with ID 'loading-status' not found.");
+            }
+            
+            updateClockAndDate();
+            setInterval(updateClockAndDate, 1000); // Update clock every second
+            
+            // Initialize budgetChartCanvas here, after the DOM is ready
+            budgetChartCanvas = document.getElementById('budget-chart').getContext('2d');
+
+            // Initialize buttons and their event listeners here
+            addIncomeFieldButton = document.getElementById('add-income-field');
+            addExpenseFieldButton = document.getElementById('add-expense-field');
+            addIncomeFieldButton.addEventListener('click', () => addDynamicField('income', '', 0));
+            addExpenseFieldButton.addEventListener('click', () => addDynamicField('expense', '', 0));
+            resetButton.addEventListener('click', resetData);
+
+
+            initFirebase(); // Initialize Firebase first
+            checkAndAutoReset(); // Check for auto-reset on load
+        };
+    </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div id="message-box" class="fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white bg-blue-500 transition-all duration-300 transform translate-x-full opacity-0 z-50"></div>
+    <div id="loading-status" class="text-center text-gray-500 text-lg mt-4 mb-4"></div>
+    <div class="container">
+        <h1 class="text-4xl font-bold text-center mb-6 text-gray-800">ניהול תקציב ביתי 🏠</h1>
+        
+        <!-- Clock and Date -->
+        <div class="text-center text-gray-600 mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
+            <div id="live-clock" class="text-3xl font-semibold mb-2 text-blue-700"></div>
+            <div id="live-date" class="text-xl text-blue-600"></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Income Section -->
+            <div class="bg-green-50 p-6 rounded-xl shadow-md border border-green-200">
+                <h2 class="text-2xl font-semibold mb-4 text-green-700">הכנסות ✅</h2>
+                <div id="income-fields" class="space-y-4">
+                    <!-- Dynamic income fields will be added here -->
+                </div>
+                <button id="add-income-field" class="mt-6 w-full bg-green-600 text-white py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition duration-300 ease-in-out transform hover:scale-105 text-lg font-medium">הוסף שדה הכנסה</button>
+            </div>
+
+            <!-- Expenses Section -->
+            <div class="bg-red-50 p-6 rounded-xl shadow-md border border-red-200">
+                <h2 class="text-2xl font-semibold mb-4 text-red-700">הוצאות ❌</h2>
+                <div id="expense-fields" class="space-y-4">
+                    <!-- Dynamic expense fields will be added here -->
+                </div>
+                <button id="add-expense-field" class="mt-6 w-full bg-red-600 text-white py-3 px-6 rounded-lg shadow-lg hover:bg-red-700 transition duration-300 ease-in-out transform hover:scale-105 text-lg font-medium">הוסף שדה הוצאה</button>
+            </div>
+        </div>
+
+        <!-- Balance and Chart Section -->
+        <div class="bg-blue-50 p-6 rounded-xl shadow-md border border-blue-200 mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-blue-700">סיכום תקציב 📊</h2>
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex-1 text-center">
+                    <p class="text-xl text-gray-700 mb-2">יתרה נוכחית:</p>
+                    <p id="current-balance" class="text-5xl font-bold text-gray-900">0.00 ₪</p>
+                    <p id="balance-status" class="text-2xl font-semibold mt-2"></p>
+                </div>
+                <div class="flex-1 w-full max-w-md">
+                    <canvas id="budget-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Data Section -->
+        <div class="bg-purple-50 p-6 rounded-xl shadow-md border border-purple-200 mb-8">
+            <h2 class="text-2xl font-semibold mb-4 text-purple-700">היסטוריית חודשים 📚</h2>
+            <div id="history-container" class="space-y-4">
+                <!-- Historical data will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Reset Button and Info -->
+        <div class="text-center mt-8">
+            <button id="reset-button" class="bg-purple-600 text-white py-3 px-8 rounded-lg shadow-lg hover:bg-purple-700 transition duration-300 ease-in-out transform hover:scale-105 text-xl font-medium">איפוס נתונים ידני</button>
+            <p class="text-gray-500 text-sm mt-4">הנתונים יתאפסו אוטומטית בכל 10 לחודש (יום קבלת משכורת).</p>
+        </div>
+    </div>
+</body>
+</html>
