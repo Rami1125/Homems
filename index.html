@@ -20,6 +20,7 @@
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app, db, auth, userId;
+        let historicalDataForCharts = []; // To store data for the historical bar chart
 
         // Function to display messages (replaces alert)
         function showMessage(message, type = 'info') {
@@ -219,8 +220,10 @@
 
             onSnapshot(q, (snapshot) => {
                 historyContainer.innerHTML = ''; // Clear previous history
+                historicalDataForCharts = []; // Clear previous data for charts
                 if (snapshot.empty) {
                     historyContainer.innerHTML = '<p class="text-gray-500 text-center">אין נתונים היסטוריים זמינים.</p>';
+                    updateHistoricalBarChart(); // Update chart even if no data
                     return;
                 }
 
@@ -249,7 +252,9 @@
                         </div>
                     `;
                     historyContainer.appendChild(historyItem);
+                    historicalDataForCharts.push(data);
                 });
+                updateHistoricalBarChart(); // Update the bar chart with new historical data
                 console.log("Historical data loaded from Firestore.");
             }, (error) => {
                 console.error("Error fetching historical data:", error);
@@ -261,7 +266,6 @@
 
         const incomeFieldsContainer = document.getElementById('income-fields');
         const expenseFieldsContainer = document.getElementById('expense-fields');
-        // addIncomeFieldButton and addExpenseFieldButton are now initialized inside window.onload
         let addIncomeFieldButton; 
         let addExpenseFieldButton;
 
@@ -271,9 +275,10 @@
         const liveClock = document.getElementById('live-clock');
         const liveDate = document.getElementById('live-date');
         
-        // budgetChartCanvas and budgetChart are now initialized inside window.onload
         let budgetChartCanvas;
         let budgetChart;
+        let historicalBarChartCanvas;
+        let historicalBarChart;
 
         function updateClockAndDate() {
             const now = new Date();
@@ -297,6 +302,27 @@
             return totalExpenses;
         }
 
+        // Function to analyze high/low amounts and their difference
+        function analyzeAmounts(detailsArray) {
+            if (detailsArray.length === 0) {
+                return { highest: null, lowest: null, difference: 0 };
+            }
+
+            let highest = detailsArray[0];
+            let lowest = detailsArray[0];
+
+            for (let i = 1; i < detailsArray.length; i++) {
+                if (detailsArray[i].amount > highest.amount) {
+                    highest = detailsArray[i];
+                }
+                if (detailsArray[i].amount < lowest.amount) {
+                    lowest = detailsArray[i];
+                }
+            }
+            const difference = highest.amount - lowest.amount;
+            return { highest, lowest, difference };
+        }
+
         function updateBalanceAndChart() {
             const totalIncome = getIncomeValues();
             const totalExpenses = getExpenseValues();
@@ -307,7 +333,7 @@
             if (balance >= 0) {
                 currentBalanceDisplay.classList.remove('text-red-600');
                 currentBalanceDisplay.classList.add('text-green-600');
-                balanceStatusDisplay.textContent = 'בפלוס! 🎉';
+                balanceStatusDisplay.textContent = 'בפלוס! �';
                 balanceStatusDisplay.classList.remove('text-red-600');
                 balanceStatusDisplay.classList.add('text-green-600');
             } else {
@@ -318,9 +344,9 @@
                 balanceStatusDisplay.classList.add('text-red-600');
             }
 
-            // Update Chart - ensure budgetChartCanvas is initialized
+            // Update Pie Chart
             if (!budgetChartCanvas) {
-                console.error("Chart canvas not initialized yet.");
+                console.error("Pie Chart canvas not initialized yet.");
                 return;
             }
 
@@ -367,8 +393,154 @@
                 }
             });
 
+            // Analyze and display high/low amounts
+            const incomeDetails = [];
+            document.querySelectorAll('#income-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.income-input');
+                if (nameInput && valueInput) {
+                    incomeDetails.push({ name: nameInput.value, amount: parseFloat(valueInput.value) || 0 });
+                }
+            });
+            const expenseDetails = [];
+            document.querySelectorAll('#expense-fields .dynamic-field').forEach(fieldDiv => {
+                const nameInput = fieldDiv.querySelector('.field-name-input');
+                const valueInput = fieldDiv.querySelector('.expense-input');
+                if (nameInput && valueInput) {
+                    expenseDetails.push({ name: nameInput.value, amount: parseFloat(valueInput.value) || 0 });
+                }
+            });
+
+            const incomeAnalysis = analyzeAmounts(incomeDetails);
+            const expenseAnalysis = analyzeAmounts(expenseDetails);
+
+            const incomeAnalysisDiv = document.getElementById('income-analysis');
+            if (incomeAnalysis.highest) {
+                incomeAnalysisDiv.innerHTML = `
+                    <p class="text-gray-700">הכנסה הגבוהה ביותר: <span class="font-semibold">${incomeAnalysis.highest.name} (${incomeAnalysis.highest.amount.toFixed(2)} ₪)</span></p>
+                    <p class="text-gray-700">הכנסה הנמוכה ביותר: <span class="font-semibold">${incomeAnalysis.lowest.name} (${incomeAnalysis.lowest.amount.toFixed(2)} ₪)</span></p>
+                    <p class="text-gray-700">הפרש: <span class="font-semibold">${incomeAnalysis.difference.toFixed(2)} ₪</span></p>
+                `;
+            } else {
+                incomeAnalysisDiv.innerHTML = '<p class="text-gray-500">אין נתוני הכנסות לניתוח.</p>';
+            }
+
+            const expenseAnalysisDiv = document.getElementById('expense-analysis');
+            if (expenseAnalysis.highest) {
+                expenseAnalysisDiv.innerHTML = `
+                    <p class="text-gray-700">הוצאה הגבוהה ביותר: <span class="font-semibold">${expenseAnalysis.highest.name} (${expenseAnalysis.highest.amount.toFixed(2)} ₪)</span></p>
+                    <p class="text-gray-700">הוצאה הנמוכה ביותר: <span class="font-semibold">${expenseAnalysis.lowest.name} (${expenseAnalysis.lowest.amount.toFixed(2)} ₪)</span></p>
+                    <p class="text-gray-700">הפרש: <span class="font-semibold">${expenseAnalysis.difference.toFixed(2)} ₪</span></p>
+                `;
+            } else {
+                expenseAnalysisDiv.innerHTML = '<p class="text-gray-500">אין נתוני הוצאות לניתוח.</p>';
+            }
+
             saveCurrentMonthData(); // Save data to Firestore on every change
         }
+
+        // Function to update the historical bar chart
+        function updateHistoricalBarChart() {
+            if (!historicalBarChartCanvas) {
+                console.error("Historical Bar Chart canvas not initialized yet.");
+                return;
+            }
+
+            if (historicalBarChart) {
+                historicalBarChart.destroy();
+            }
+
+            // Sort data by monthYear to ensure correct order on the chart
+            const sortedData = [...historicalDataForCharts].sort((a, b) => {
+                if (a.monthYear < b.monthYear) return -1;
+                if (a.monthYear > b.monthYear) return 1;
+                return 0;
+            });
+
+            const labels = sortedData.map(data => data.monthYear);
+            const incomes = sortedData.map(data => data.totalIncome);
+            const expenses = sortedData.map(data => data.totalExpenses);
+            const balances = sortedData.map(data => data.balance);
+
+            historicalBarChart = new Chart(historicalBarChartCanvas, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'סה"כ הכנסות',
+                            data: incomes,
+                            backgroundColor: 'rgba(52, 211, 153, 0.8)', // Green
+                            borderColor: 'rgba(52, 211, 153, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'סה"כ הוצאות',
+                            data: expenses,
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)', // Red
+                            borderColor: 'rgba(239, 68, 68, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'יתרה סופית',
+                            data: balances,
+                            type: 'line', // Show balance as a line on top of bars
+                            borderColor: 'rgba(59, 130, 246, 1)', // Blue
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Allow canvas to resize freely
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'חודש',
+                                font: { size: 16 }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'סכום (₪)',
+                                font: { size: 16 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
 
         // Function to add a dynamic field (income/expense)
         function addDynamicField(type, initialName = '', initialValue = 0) {
@@ -394,6 +566,7 @@
 
             // Update balance on value input change
             valueInput.addEventListener('input', updateBalanceAndChart);
+            nameInput.addEventListener('input', updateBalanceAndChart); // Also update on name change for saving
 
             // Remove field button
             removeButton.addEventListener('click', () => {
@@ -405,7 +578,7 @@
             if (initialName === 'משכורת' && type === 'income') {
                 nameInput.readOnly = true; // Make default fields non-editable
             }
-            if (initialName === 'גן ילדים' || initialName === 'חשמל' || initialName === 'מים' || initialName === 'מזונות' || initialName === 'כרטיסי אשראי' && type === 'expense') {
+            if (['גן ילדים', 'חשמל', 'מים', 'מזונות', 'כרטיסי אשראי'].includes(initialName) && type === 'expense') {
                 nameInput.readOnly = true; // Make default fields non-editable
             }
         }
@@ -463,6 +636,15 @@
             }
         }
 
+        // Typewriter effect function
+        function typeWriterEffect(element, text, i = 0, speed = 50) {
+            if (i < text.length) {
+                element.textContent += text.charAt(i);
+                setTimeout(() => typeWriterEffect(element, text, i + 1, speed), speed);
+            }
+        }
+
+
         // Initial calls on page load
         window.onload = function() {
             // Ensure loading-status element exists before trying to access it
@@ -476,8 +658,10 @@
             updateClockAndDate();
             setInterval(updateClockAndDate, 1000); // Update clock every second
             
-            // Initialize budgetChartCanvas here, after the DOM is ready
+            // Initialize budgetChartCanvas and historicalBarChartCanvas here, after the DOM is ready
             budgetChartCanvas = document.getElementById('budget-chart').getContext('2d');
+            historicalBarChartCanvas = document.getElementById('historical-bar-chart').getContext('2d');
+
 
             // Initialize buttons and their event listeners here
             addIncomeFieldButton = document.getElementById('add-income-field');
@@ -486,15 +670,113 @@
             addExpenseFieldButton.addEventListener('click', () => addDynamicField('expense', '', 0));
             resetButton.addEventListener('click', resetData);
 
+            // Apply typewriter effect to main title
+            const mainTitle = document.querySelector('h1');
+            const originalTitleText = mainTitle.textContent;
+            mainTitle.textContent = ''; // Clear text before typing
+            typeWriterEffect(mainTitle, originalTitleText);
+
 
             initFirebase(); // Initialize Firebase first
             checkAndAutoReset(); // Check for auto-reset on load
         };
     </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; /* Dark background */
+            color: #e2e8f0; /* Light text for contrast */
+            direction: rtl; /* Right-to-left for Hebrew */
+            text-align: right;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem; /* Padding for mobile */
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px; /* Max width for larger screens */
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: #2d3748; /* Slightly lighter dark background for container */
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4); /* Deeper shadow */
+            border: 1px solid #4a5568; /* Subtle border */
+        }
+        input[type="number"], input[type="text"] {
+            -moz-appearance: textfield; /* Firefox */
+            background-color: #4a5568; /* Darker input background */
+            color: #e2e8f0; /* Light text */
+            border-color: #6b7280; /* Darker border */
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        /* Premium button styles */
+        button {
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            border: none;
+        }
+        button:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+        }
+        .bg-green-600:hover { background-color: #2f855a; }
+        .bg-red-600:hover { background-color: #c53030; }
+        .bg-purple-600:hover { background-color: #6b46c1; }
+
+        h1, h2 {
+            color: #a0aec0; /* Lighter grey for headings */
+            text-shadow: 0 0 8px rgba(160, 174, 192, 0.5); /* Subtle glow/sparkle effect */
+        }
+        #current-balance {
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* Glow for balance */
+        }
+        .bg-blue-50 { background-color: #3182ce20; border-color: #3182ce40; } /* Subtle blue for info sections */
+        .bg-green-50 { background-color: #38a16920; border-color: #38a16940; } /* Subtle green for income */
+        .bg-red-50 { background-color: #e53e3e20; border-color: #e53e3e40; } /* Subtle red for expenses */
+        .bg-purple-50 { background-color: #805ad520; border-color: #805ad540; } /* Subtle purple for history */
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+                margin: 1rem auto;
+            }
+            .grid-cols-1.md\\:grid-cols-2 {
+                grid-template-columns: 1fr; /* Stack columns on small screens */
+            }
+            .flex-col.md\\:flex-row {
+                flex-direction: column;
+            }
+            .flex-1.w-full.max-w-md {
+                width: 100%;
+                max-width: 100%;
+            }
+            .field-name-input {
+                width: 100%; /* Full width for name input on small screens */
+                margin-bottom: 0.5rem; /* Add some space */
+            }
+            .flex-wrap.items-center.gap-3 {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .remove-field-btn {
+                width: 100%; /* Full width for remove button */
+                margin-top: 0.5rem;
+            }
+        }
+    </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div id="message-box" class="fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white bg-blue-500 transition-all duration-300 transform translate-x-full opacity-0 z-50"></div>
-    <div id="loading-status" class="text-center text-gray-500 text-lg mt-4 mb-4"></div>
+    <div id="loading-status" class="text-center text-gray-500 text-lg mt-4 mb-4 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40"></div>
+    
     <div class="container">
         <h1 class="text-4xl font-bold text-center mb-6 text-gray-800">ניהול תקציב ביתי 🏠</h1>
         
@@ -526,7 +808,7 @@
 
         <!-- Balance and Chart Section -->
         <div class="bg-blue-50 p-6 rounded-xl shadow-md border border-blue-200 mb-8">
-            <h2 class="text-2xl font-semibold mb-4 text-blue-700">סיכום תקציב 📊</h2>
+            <h2 class="text-2xl font-semibold mb-4 text-blue-700">סיכום תקציב נוכחי 📊</h2>
             <div class="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div class="flex-1 text-center">
                     <p class="text-xl text-gray-700 mb-2">יתרה נוכחית:</p>
@@ -539,11 +821,34 @@
             </div>
         </div>
 
+        <!-- Current Month Analysis Section -->
+        <div class="bg-gray-700 p-6 rounded-xl shadow-md border border-gray-600 mb-8 text-gray-200">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-200">ניתוח חודשי 📈</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-xl font-semibold mb-2 text-green-400">ניתוח הכנסות:</h3>
+                    <div id="income-analysis" class="bg-gray-800 p-4 rounded-lg shadow-inner">
+                        <p class="text-gray-500">אין נתוני הכנסות לניתוח.</p>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-2 text-red-400">ניתוח הוצאות:</h3>
+                    <div id="expense-analysis" class="bg-gray-800 p-4 rounded-lg shadow-inner">
+                        <p class="text-gray-500">אין נתוני הוצאות לניתוח.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Historical Data Section -->
         <div class="bg-purple-50 p-6 rounded-xl shadow-md border border-purple-200 mb-8">
             <h2 class="text-2xl font-semibold mb-4 text-purple-700">היסטוריית חודשים 📚</h2>
-            <div id="history-container" class="space-y-4">
+            <div id="history-container" class="space-y-4 mb-6">
                 <!-- Historical data will be loaded here -->
+            </div>
+            <h3 class="text-2xl font-semibold mb-4 text-purple-700">גרף היסטורי 📊</h3>
+            <div class="relative h-80"> <!-- Fixed height for chart on smaller screens -->
+                <canvas id="historical-bar-chart"></canvas>
             </div>
         </div>
 
@@ -555,3 +860,4 @@
     </div>
 </body>
 </html>
+�
