@@ -540,6 +540,12 @@
             url.searchParams.append('action', action);
             url.searchParams.append('sheetId', GOOGLE_SHEET_ID);
 
+            console.log(`[DEBUG] Attempting to fetch: ${url.toString()}`);
+            console.log(`[DEBUG] Request method: ${action === 'getHistoricalData' || action === 'getCurrentMonthData' ? 'GET' : 'POST'}`);
+            if (action !== 'getHistoricalData' && action !== 'getCurrentMonthData') {
+                console.log(`[DEBUG] Request body: ${JSON.stringify(data)}`);
+            }
+
             try {
                 const response = await fetch(url.toString(), {
                     method: action === 'getHistoricalData' || action === 'getCurrentMonthData' ? 'GET' : 'POST',
@@ -551,13 +557,18 @@
                     mode: 'cors'
                 });
 
+                console.log(`[DEBUG] Response status: ${response.status} ${response.statusText}`);
+
                 if (!response.ok) {
                     const errorText = await response.text();
+                    console.error(`[DEBUG] HTTP error response text: ${errorText}`);
                     throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
                 }
-                return await response.json();
+                const jsonResponse = await response.json();
+                console.log(`[DEBUG] Successful response JSON:`, jsonResponse);
+                return jsonResponse;
             } catch (error) {
-                console.error('Error making Google Sheets request:', error);
+                console.error('[DEBUG] Error making Google Sheets request (catch block):', error);
                 showMessage(`שגיאה בתקשורת עם הגיליון: ${error.message}`, 'error');
                 return null;
             }
