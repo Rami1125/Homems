@@ -229,8 +229,8 @@
         }
 
         function getIncomeValues() {
-            let totalIncome = parseFloat(document.getElementById('monthlySalary')?.value) || 0;
-            document.querySelectorAll('.income-input:not(#monthlySalary, #overdraftBalance, #creditLimit)').forEach(input => {
+            let totalIncome = parseFloat(document.getElementById('משכורתחודש')?.value) || 0; // Fixed field
+            document.querySelectorAll('.income-input:not(#משכורתחודש, #יתרתעו"ש, #מסגרתאשראיבחשבון)').forEach(input => { // Exclude fixed balance/credit fields from dynamic income sum
                 totalIncome += parseFloat(input.value) || 0;
             });
             return totalIncome;
@@ -238,11 +238,11 @@
 
         function getExpenseValues() {
             let totalExpenses = 0;
-            totalExpenses += parseFloat(document.getElementById('expectedCreditCardCharges')?.value) || 0;
-            totalExpenses += parseFloat(document.getElementById('kindergartenExpense')?.value) || 0;
-            totalExpenses += parseFloat(document.getElementById('alimonyExpense')?.value) || 0;
-            totalExpenses += parseFloat(document.getElementById('carpenterDebtPayment')?.value) || 0;
-            document.querySelectorAll('.expense-input:not(#expectedCreditCardCharges, #kindergartenExpense, #alimonyExpense, #carpenterDebtPayment)').forEach(input => {
+            totalExpenses += parseFloat(document.getElementById('חיוביםצפוייםבכרטיסאשראי')?.value) || 0;
+            totalExpenses += parseFloat(document.getElementById('הוצאותגןילדים')?.value) || 0;
+            totalExpenses += parseFloat(document.getElementById('מזונות')?.value) || 0;
+            totalExpenses += parseFloat(document.getElementById('תשלוםחובנגר')?.value) || 0;
+            document.querySelectorAll('.expense-input:not(#חיוביםצפוייםבכרטיסאשראי, #הוצאותגןילדים, #מזונות, #תשלוםחובנגר)').forEach(input => {
                 totalExpenses += parseFloat(input.value) || 0;
             });
             return totalExpenses;
@@ -269,8 +269,8 @@
         }
 
         function updateBalanceAndChart() {
-            const startingCashBalance = parseFloat(document.getElementById('overdraftBalance')?.value) || 0;
-            const creditLineAvailable = parseFloat(document.getElementById('creditLimit')?.value) || 0;
+            const startingCashBalance = parseFloat(document.getElementById('יתרתעו"ש')?.value) || 0;
+            const creditLineAvailable = parseFloat(document.getElementById('מסגרתאשראיבחשבון')?.value) || 0;
             const totalIncome = getIncomeValues();
             const totalExpenses = getExpenseValues();
             
@@ -343,20 +343,20 @@
 
             // Analyze and display high/low amounts
             const incomeDetails = [];
-            incomeDetails.push({ name: 'יתרת עו"ש', amount: parseFloat(document.getElementById('overdraftBalance')?.value) || 0 });
-            incomeDetails.push({ name: 'מסגרת אשראי בחשבון', amount: parseFloat(document.getElementById('creditLimit')?.value) || 0 });
-            incomeDetails.push({ name: 'משכורת חודש', amount: parseFloat(document.getElementById('monthlySalary')?.value) || 0 });
-            document.querySelectorAll('.income-input:not(#monthlySalary, #overdraftBalance, #creditLimit)').forEach(input => {
+            incomeDetails.push({ name: 'יתרת עו"ש', amount: startingCashBalance });
+            incomeDetails.push({ name: 'מסגרת אשראי בחשבון', amount: creditLineAvailable });
+            incomeDetails.push({ name: 'משכורת חודש', amount: parseFloat(document.getElementById('משכורתחודש')?.value) || 0 });
+            document.querySelectorAll('.income-input:not(#משכורתחודש, #יתרתעו"ש, #מסגרתאשראיבחשבון)').forEach(input => {
                 const nameInput = input.closest('.dynamic-field').querySelector('.field-name-input');
                 incomeDetails.push({ name: nameInput.value, amount: parseFloat(input.value) || 0 });
             });
 
             const expenseDetails = [];
-            expenseDetails.push({ name: 'חיובים צפויים בכרטיס אשראי', amount: parseFloat(document.getElementById('expectedCreditCardCharges')?.value) || 0 });
-            expenseDetails.push({ name: 'הוצאות גן ילדים', amount: parseFloat(document.getElementById('kindergartenExpense')?.value) || 0 });
-            expenseDetails.push({ name: 'מזונות', amount: parseFloat(document.getElementById('alimonyExpense')?.value) || 0 });
-            expenseDetails.push({ name: 'תשלום חוב נגר', amount: parseFloat(document.getElementById('carpenterDebtPayment')?.value) || 0 });
-            document.querySelectorAll('.expense-input:not(#expectedCreditCardCharges, #kindergartenExpense, #alimonyExpense, #carpenterDebtPayment)').forEach(input => {
+            expenseDetails.push({ name: 'חיובים צפויים בכרטיס אשראי', amount: parseFloat(document.getElementById('חיוביםצפוייםבכרטיסאשראי')?.value) || 0 });
+            expenseDetails.push({ name: 'הוצאות גן ילדים', amount: parseFloat(document.getElementById('הוצאותגןילדים')?.value) || 0 });
+            expenseDetails.push({ name: 'מזונות', amount: parseFloat(document.getElementById('מזונות')?.value) || 0 });
+            expenseDetails.push({ name: 'תשלום חוב נגר', amount: parseFloat(document.getElementById('תשלוםחובנגר')?.value) || 0 });
+            document.querySelectorAll('.expense-input:not(#חיוביםצפוייםבכרטיסאשראי, #הוצאותגןילדים, #מזונות, #תשלוםחובנגר)').forEach(input => {
                 const nameInput = input.closest('.dynamic-field').querySelector('.field-name-input');
                 expenseDetails.push({ name: nameInput.value, amount: parseFloat(input.value) || 0 });
             });
@@ -403,15 +403,15 @@
 
             // Sort data by monthYear to ensure correct order on the chart
             const sortedData = [...historicalDataForCharts].sort((a, b) => {
-                if (a.monthYear < b.monthYear) return -1;
-                if (a.monthYear > b.monthYear) return 1;
+                if (a.month < b.month) return -1; // Use 'month' from Apps Script
+                if (a.month > b.month) return 1;
                 return 0;
             });
 
-            const labels = sortedData.map(data => data.monthYear);
-            const incomes = sortedData.map(data => data.totalIncome);
-            const expenses = sortedData.map(data => data.totalExpenses);
-            const balances = sortedData.map(data => data.balance);
+            const labels = sortedData.map(data => data['חודש']); // Use 'חודש' column from Apps Script
+            const incomes = sortedData.map(data => data['סה"כ הכנסות']);
+            const expenses = sortedData.map(data => data['סה"כ הוצאות']);
+            const balances = sortedData.map(data => data['יתרה סופית']);
 
             historicalBarChart = new Chart(historicalBarChartCanvas, {
                 type: 'bar',
@@ -495,7 +495,7 @@
         function addDynamicField(type, initialName = '', initialValue = 0, isDefault = false) {
             const container = type === 'income' ? incomeFieldsContainer : expenseFieldsContainer;
             const inputClass = type === 'income' ? 'income-input focus:ring-green-500 focus:border-green-500' : 'expense-input focus:ring-red-500 focus:border-red-500';
-            const inputId = isDefault ? initialName.replace(/[^a-zA-Z0-9]/g, '') : `${type}-${Date.now()}`; 
+            const inputId = isDefault ? initialName.replace(/[^a-zA-Z0-9א-ת]/g, '') : `${type}-${Date.now()}`; // Allow Hebrew chars in ID
 
             const newField = document.createElement('div');
             newField.className = 'flex flex-wrap items-center gap-3 dynamic-field';
@@ -540,7 +540,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: action === 'getHistoricalData' || action === 'getCurrentMonthData' ? null : JSON.stringify(data),
-                    redirect: 'follow', // Important for Apps Script redirects
+                    redirect: 'follow', 
                     mode: 'cors'
                 });
 
@@ -565,7 +565,7 @@
                 document.querySelectorAll('#income-fields .dynamic-field').forEach(field => field.remove());
                 document.querySelectorAll('#expense-fields .dynamic-field').forEach(field => field.remove());
 
-                // Add fixed fields
+                // Add fixed fields based on sheet columns
                 addDynamicField('income', 'יתרת עו"ש', data["יתרת עו\"ש"] || 0, true);
                 addDynamicField('income', 'מסגרת אשראי בחשבון', data["מסגרת אשראי בחשבון"] || 0, true);
                 addDynamicField('income', 'משכורת חודש', data["משכורת חודש"] || 0, true);
@@ -612,11 +612,11 @@
                 "מזונות": parseFloat(document.getElementById('מזונות')?.value) || 0,
                 "תשלום חוב נגר": parseFloat(document.getElementById('תשלוםחובנגר')?.value) || 0,
                 "משכורת חודש": parseFloat(document.getElementById('משכורתחודש')?.value) || 0,
-                "הכנסות נוספות (JSON)": JSON.stringify(Array.from(document.querySelectorAll('.income-input:not(#monthlySalary, #overdraftBalance, #creditLimit)')).map(input => ({
+                "הכנסות נוספות (JSON)": JSON.stringify(Array.from(document.querySelectorAll('.income-input:not(#משכורתחודש, #יתרתעו"ש, #מסגרתאשראיבחשבון)')).map(input => ({
                     name: input.closest('.dynamic-field').querySelector('.field-name-input').value,
                     amount: parseFloat(input.value) || 0
                 }))),
-                "הוצאות נוספות (JSON)": JSON.stringify(Array.from(document.querySelectorAll('.expense-input:not(#expectedCreditCardCharges, #kindergartenExpense, #alimonyExpense, #carpenterDebtPayment)')).map(input => ({
+                "הוצאות נוספות (JSON)": JSON.stringify(Array.from(document.querySelectorAll('.expense-input:not(#חיוביםצפוייםבכרטיסאשראי, #הוצאותגןילדים, #מזונות, #תשלוםחובנגר)')).map(input => ({
                     name: input.closest('.dynamic-field').querySelector('.field-name-input').value,
                     amount: parseFloat(input.value) || 0
                 })))
@@ -634,16 +634,27 @@
             const incomeDetails = [
                 { name: 'יתרת עו"ש', amount: startingCashBalance },
                 { name: 'מסגרת אשראי בחשבון', amount: creditLineAvailable },
-                { name: 'משכורת חודש', amount: parseFloat(document.getElementById('משכורתחודש')?.value) || 0 },
-                ...JSON.parse(document.getElementById('הכנסותנוספות(JSON)')?.value || '[]')
+                { name: 'משכורת חודש', amount: parseFloat(document.getElementById('משכורתחודש')?.value) || 0 }
             ];
+            Array.from(document.querySelectorAll('.income-input:not(#משכורתחודש, #יתרתעו"ש, #מסגרתאשראיבחשבון)')).forEach(input => {
+                incomeDetails.push({
+                    name: input.closest('.dynamic-field').querySelector('.field-name-input').value,
+                    amount: parseFloat(input.value) || 0
+                });
+            });
+
             const expenseDetails = [
                 { name: 'חיובים צפויים בכרטיס אשראי', amount: parseFloat(document.getElementById('חיוביםצפוייםבכרטיסאשראי')?.value) || 0 },
                 { name: 'הוצאות גן ילדים', amount: parseFloat(document.getElementById('הוצאותגןילדים')?.value) || 0 },
                 { name: 'מזונות', amount: parseFloat(document.getElementById('מזונות')?.value) || 0 },
-                { name: 'תשלום חוב נגר', amount: parseFloat(document.getElementById('תשלוםחובנגר')?.value) || 0 },
-                ...JSON.parse(document.getElementById('הוצאותנוספות(JSON)')?.value || '[]')
+                { name: 'תשלום חוב נגר', amount: parseFloat(document.getElementById('תשלוםחובנגר')?.value) || 0 }
             ];
+            Array.from(document.querySelectorAll('.expense-input:not(#חיוביםצפוייםבכרטיסאשראי, #הוצאותגןילדים, #מזונות, #תשלוםחובנגר)')).forEach(input => {
+                expenseDetails.push({
+                    name: input.closest('.dynamic-field').querySelector('.field-name-input').value,
+                    amount: parseFloat(input.value) || 0
+                });
+            });
 
             const now = new Date();
             const monthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -665,41 +676,46 @@
             const historyContainer = document.getElementById('history-container');
             historyContainer.innerHTML = '<p class="text-gray-500 text-center">טוען היסטוריה...</p>';
             const result = await makeSheetsRequest('getHistoricalData');
-            historicalDataForCharts = []; // Reset for new data
+            historicalDataForCharts = []; 
             historyContainer.innerHTML = ''; 
 
             if (result && result.success && result.data.length > 0) {
                 const sortedData = result.data.sort((a, b) => {
-                    const dateA = new Date(a.timestamp);
-                    const dateB = new Date(b.timestamp);
+                    const dateA = new Date(a['תאריך שמירה']);
+                    const dateB = new Date(b['תאריך שמירה']);
                     return dateB - dateA; // Newest first
                 });
 
                 sortedData.forEach((data) => {
-                    const date = new Date(data.timestamp).toLocaleDateString('he-IL');
-                    const statusClass = data.balance >= 0 ? 'text-green-600' : 'text-red-600';
+                    const date = new Date(data['תאריך שמירה']).toLocaleDateString('he-IL');
+                    const statusClass = data['יתרה סופית'] >= 0 ? 'text-green-600' : 'text-red-600';
 
                     const historyItem = document.createElement('div');
                     historyItem.className = 'bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-3';
                     historyItem.innerHTML = `
-                        <p class="text-lg font-semibold text-gray-800">${data.monthYear} - סיכום חודשי</p>
+                        <p class="text-lg font-semibold text-gray-800">${data['חודש']} - סיכום חודשי</p>
                         <p class="text-gray-600">תאריך שמירה: ${date}</p>
-                        <p class="text-gray-700">סה"כ הכנסות: <span class="text-green-600 font-medium">${data.totalIncome.toFixed(2)} ₪</span></p>
-                        <p class="text-gray-700">סה"כ הוצאות: <span class="text-red-600 font-medium">${data.totalExpenses.toFixed(2)} ₪</span></p>
-                        <p class="text-xl font-bold ${statusClass}">יתרה סופית: ${data.balance.toFixed(2)} ₪</p>
+                        <p class="text-gray-700">סה"כ הכנסות: <span class="text-green-600 font-medium">${parseFloat(data['סה"כ הכנסות']).toFixed(2)} ₪</span></p>
+                        <p class="text-gray-700">סה"כ הוצאות: <span class="text-red-600 font-medium">${parseFloat(data['סה"כ הוצאות']).toFixed(2)} ₪</span></p>
+                        <p class="text-xl font-bold ${statusClass}">יתרה סופית: ${parseFloat(data['יתרה סופית']).toFixed(2)} ₪</p>
                         <div class="mt-2 text-sm text-gray-600">
                             <p class="font-semibold">פירוט הכנסות:</p>
                             <ul class="list-disc list-inside">
-                                ${JSON.parse(data.incomeDetails || '[]').map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
+                                ${JSON.parse(data['פירוט הכנסות (JSON)'] || '[]').map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
                             </ul>
                             <p class="font-semibold mt-2">פירוט הוצאות:</p>
                             <ul class="list-disc list-inside">
-                                ${JSON.parse(data.expenseDetails || '[]').map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
+                                ${JSON.parse(data['פירוט הוצאות (JSON)'] || '[]').map(item => `<li>${item.name}: ${item.amount.toFixed(2)} ₪</li>`).join('')}
                             </ul>
                         </div>
                     `;
                     historyContainer.appendChild(historyItem);
-                    historicalDataForCharts.push(data);
+                    historicalDataForCharts.push({
+                        monthYear: data['חודש'],
+                        totalIncome: parseFloat(data['סה"כ הכנסות']),
+                        totalExpenses: parseFloat(data['סה"כ הוצאות']),
+                        balance: parseFloat(data['יתרה סופית'])
+                    });
                 });
                 updateHistoricalBarChart(); 
                 console.log("Historical data loaded from Google Sheet.");
@@ -710,7 +726,7 @@
         }
 
         async function resetData() {
-            await saveMonthlySummary(); // Save current month before resetting
+            await saveMonthlySummary(); 
             const defaultCurrentData = {
                 "יתרת עו\"ש": 0,
                 "מסגרת אשראי בחשבון": 0,
@@ -722,11 +738,10 @@
                 "הכנסות נוספות (JSON)": "[]",
                 "הוצאות נוספות (JSON)": "[]"
             };
-            await makeSheetsRequest('saveCurrentMonthData', defaultCurrentData); // Clear current month data
+            await makeSheetsRequest('saveCurrentMonthData', defaultCurrentData); 
             
-            // Clear UI inputs and dynamic fields
             document.querySelectorAll('.dynamic-field').forEach(field => field.remove());
-            loadCurrentMonthData(); // Reload UI with 0s and default fields
+            loadCurrentMonthData(); 
 
             const now = new Date();
             localStorage.setItem('lastResetMonthYear', `${now.getFullYear()}-${now.getMonth()}`);
